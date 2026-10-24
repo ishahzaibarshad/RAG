@@ -1,33 +1,55 @@
 from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import settings
-from .vector_store import NumpyVectorStore
 from .embeddings import Embedder
-from .retriever import Retriever
 from .rag import RAGEngine
+from .retriever import Retriever
+from .vector_store import NumpyVectorStore
 
-app = FastAPI(title="RAG From Scratch")
 
-# Load once at startup
-store = NumpyVectorStore.load(settings.index_dir, settings.index_name)
-embedder = Embedder()
-retriever = Retriever(store, embedder)
-rag = RAGEngine(retriever)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    store = NumpyVectorStore.load(settings.index_dir, settings.index_name)
+    embedder = Embedder()
+    _app.state.rag = RAGEngine(Retriever(store, embedder))
+    yield
+
+
+app = FastAPI(title="RAG From Scratch", lifespan=lifespan)
 
 
 class QueryRequest(BaseModel):
-    question: str
-    top_k: int | None = None
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=1, max_length=2000)
+    top_k: int | None = Field(default=None, ge=1, le=20)
+
+    @field_validator("question")
+    @classmethod
+    def reject_blank_question(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("question must contain non-whitespace text")
+        return value.strip()
+
+
+class SourceReference(BaseModel):
+    chunk_id: str
+    score: float
+    source: str | None = None
+    page: int | None = None
 
 
 class QueryResponse(BaseModel):
     answer: str
-    sources: list
+    sources: list[SourceReference]
 
 
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest):
-    res = rag.answer(req.question, top_k=req.top_k)
-    return {"answer": res.answer, "sources": res.sources}
+    result = app.state.rag.answer(req.question, top_k=req.top_k)
+    return {"answer": result.answer, "sources": result.sources}
+

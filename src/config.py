@@ -1,6 +1,7 @@
-
 from __future__ import annotations
+
 import os
+import re
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
@@ -8,13 +9,13 @@ load_dotenv(".env")
 
 
 def _get_int(name: str, default: int) -> int:
-    v = os.getenv(name)
-    if v is None or v.strip() == "":
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
         return default
     try:
-        return int(v)
-    except ValueError:
-        return default
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
 
 
 @dataclass(frozen=True)
@@ -33,5 +34,18 @@ class Settings:
     index_dir: str = os.getenv("INDEX_DIR", "./data/index")
     index_name: str = os.getenv("INDEX_NAME", "main")
 
+    def __post_init__(self) -> None:
+        if self.rag_top_k < 1:
+            raise ValueError("RAG_TOP_K must be at least 1")
+        if self.rag_max_context_chars < 1:
+            raise ValueError("RAG_MAX_CONTEXT_CHARS must be at least 1")
+        if self.chunk_size_chars < 1:
+            raise ValueError("CHUNK_SIZE_CHARS must be at least 1")
+        if not 0 <= self.chunk_overlap_chars < self.chunk_size_chars:
+            raise ValueError("CHUNK_OVERLAP_CHARS must be between 0 and CHUNK_SIZE_CHARS - 1")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", self.index_name):
+            raise ValueError("INDEX_NAME must be a simple file-name component")
+
 
 settings = Settings()
+
