@@ -1,6 +1,7 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from .loaders import Document
 
@@ -13,12 +14,14 @@ class Chunk:
 
 
 def chunk_text(text: str, size: int, overlap: int) -> List[str]:
+    if size < 1:
+        raise ValueError("size must be at least 1")
+    if overlap < 0 or overlap >= size:
+        raise ValueError("overlap must be between 0 and size - 1")
+
     text = (text or "").strip()
     if not text:
         return []
-
-    if overlap >= size:
-        overlap = max(0, size // 4)
 
     chunks: List[str] = []
     start = 0
@@ -31,27 +34,29 @@ def chunk_text(text: str, size: int, overlap: int) -> List[str]:
             chunks.append(chunk)
         if end == n:
             break
-        start = max(0, end - overlap)
+        start = end - overlap
 
     return chunks
 
 
 def chunk_documents(docs: List[Document], size: int, overlap: int) -> List[Chunk]:
     out: List[Chunk] = []
-    for d in docs:
-        parts = chunk_text(d.text, size=size, overlap=overlap)
+    for doc in docs:
+        parts = chunk_text(doc.text, size=size, overlap=overlap)
         for idx, part in enumerate(parts):
+            chunk_id = f"{doc.doc_id}::chunk={idx}"
             out.append(
                 Chunk(
-                    chunk_id=f"{d.doc_id}::chunk={idx}",
+                    chunk_id=chunk_id,
                     text=part,
                     meta={
-                        **(d.meta or {}),
-                        "doc_id": d.doc_id,
-                        "source": d.source,
+                        **(doc.meta or {}),
+                        "doc_id": doc.doc_id,
+                        "source": doc.source,
                         "chunk_index": idx,
-                        "chunk_id": f"{d.doc_id}::chunk={idx}",
+                        "chunk_id": chunk_id,
                     },
                 )
             )
     return out
+

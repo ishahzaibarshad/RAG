@@ -1,10 +1,11 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import List, Dict, Any
 
-from .vector_store import NumpyVectorStore, VectorRecord
-from .embeddings import Embedder
+from dataclasses import dataclass
+from typing import Any, Dict, List
+
 from .config import settings
+from .embeddings import Embedder
+from .vector_store import NumpyVectorStore
 
 
 @dataclass
@@ -21,10 +22,16 @@ class Retriever:
         self.embedder = embedder
 
     def retrieve(self, question: str, top_k: int | None = None) -> List[RetrievedChunk]:
-        k = top_k or settings.rag_top_k
+        question = question.strip()
+        if not question:
+            raise ValueError("question must not be empty")
+        k = settings.rag_top_k if top_k is None else top_k
+        if k < 1:
+            raise ValueError("top_k must be at least 1")
         qvec = self.embedder.embed_query(question)
         hits = self.store.cosine_search(qvec, top_k=k)
         return [
-            RetrievedChunk(score=s, chunk_id=r.chunk_id, text=r.text, meta=r.meta)
-            for s, r in hits
+            RetrievedChunk(score=score, chunk_id=record.chunk_id, text=record.text, meta=record.meta)
+            for score, record in hits
         ]
+

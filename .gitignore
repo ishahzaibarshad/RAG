@@ -34,3 +34,10 @@ data/index/
 # OS
 Thumbs.db
 .DS_Store
+
+# Local validation artifacts
+.test-deps/
+worktmp/
+.pytest-tmp/
+.pytest_cache/
+
